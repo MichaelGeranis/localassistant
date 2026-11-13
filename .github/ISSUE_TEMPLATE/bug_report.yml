@@ -1,0 +1,30 @@
+name: Bug report
+description: Something doesn't work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Please don't paste real email content, tokens or chat IDs. Redact them."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Run log
+      description: Relevant lines from `%LOCALAPPDATA%\LocalAssistant\digest-run-log.txt`, redacted.
+      render: text
+  - type: input
+    id: model
+    attributes:
+      label: Ollama model and version
+      placeholder: llama3.2:3b, Ollama 0.40
+  - type: input
+    id: os
+    attributes:
+      label: OS and .NET version
+      placeholder: Windows 11, .NET 11.0.0

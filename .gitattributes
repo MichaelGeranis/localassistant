@@ -1,0 +1,5 @@
+# Normalize line endings. This is a Windows-only project, so working copies use CRLF.
+* text=auto eol=crlf
+
+# Keep shell scripts LF in case any are ever run under WSL / Git Bash.
+*.sh text eol=lf

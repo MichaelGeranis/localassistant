@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      testing:
+        patterns: ["*"]
+  # Workflows pin actions to full commit SHAs; Dependabot moves the SHA and its version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+  # The .NET SDK in global.json.
+  - package-ecosystem: dotnet-sdk
+    directory: /
+    schedule:
+      interval: monthly

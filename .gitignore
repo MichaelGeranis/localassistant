@@ -1,0 +1,29 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Pp]ublish/
+
+# IDE / editor
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Secrets — the env-var setup file is kept outside the repo; never commit one
+**/global variables.md
+*.secret
+*.secret.*
+.env
+.env.*
+
+# OS cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+.claude/*
+
+# Test output
+TestResults/
