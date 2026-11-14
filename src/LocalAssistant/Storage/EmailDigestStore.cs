@@ -23,12 +23,23 @@ namespace LocalAssistant.Storage
         public static string FilePath => AppPaths.DigestHistoryFile;
 
         /// <summary>
-        /// Appends one line for this run.
+        /// Appends one line for this run, then removes lines older than
+        /// <paramref name="retentionDays"/>. With 0, records nothing and deletes the history.
         /// </summary>
-        public static async Task AppendAsync(EmailDigest digest, string channel, bool delivered)
+        public static async Task AppendAsync(EmailDigest digest, string channel, bool delivered, int retentionDays)
         {
             try
             {
+                if (retentionDays <= 0)
+                {
+                    if (File.Exists(FilePath))
+                    {
+                        File.Delete(FilePath);
+                        RunLog.Append($"Digest history is off (history.retentionDays = 0); deleted {Path.GetFileName(FilePath)}.");
+                    }
+                    return;
+                }
+
                 var record = new DigestRunRecord
                 {
                     SchemaVersion = CurrentSchemaVersion,
@@ -56,12 +67,55 @@ namespace LocalAssistant.Storage
 
                 AppPaths.EnsureRoot();
                 await File.AppendAllTextAsync(FilePath, line + Environment.NewLine);
+                var removed = PruneOlderThan(FilePath, digest.GeneratedAt - TimeSpan.FromDays(retentionDays));
+                if (removed > 0)
+                {
+                    RunLog.Append($"Removed {removed} digest(s) older than {retentionDays} days from history.");
+                }
 
                 RunLog.Append($"Digest recorded to {Path.GetFileName(FilePath)} ({digest.Items.Count} item(s), channel {channel}, delivered {delivered}).");
             }
             catch (Exception ex)
             {
-                RunLog.Append($"Could not record the digest to history ({ex.Message}); continuing.");
+                RunLog.Append($"Could not record the digest to history ({ex.GetType().Name}); continuing.");
+            }
+        }
+
+        /// <summary>
+        /// Keeps the lines generated at or after <paramref name="cutoff"/>; a line that cannot be
+        /// read is kept rather than lost. Rewrites the file only when something is removed.
+        /// </summary>
+        /// <returns>How many lines were removed</returns>
+        internal static int PruneOlderThan(string path, DateTimeOffset cutoff)
+        {
+            var lines = File.ReadAllLines(path);
+            var kept = lines.Where(line => !IsOlderThan(line, cutoff)).ToList();
+            var removed = lines.Length - kept.Count;
+            if (removed > 0)
+            {
+                var temp = path + ".tmp";
+                File.WriteAllLines(temp, kept);
+                File.Move(temp, path, overwrite: true);
+            }
+            return removed;
+        }
+
+        private static bool IsOlderThan(string line, DateTimeOffset cutoff)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return true;
+            }
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                return document.RootElement.TryGetProperty("generatedAt", out var at)
+                    && at.TryGetDateTimeOffset(out var generatedAt)
+                    && generatedAt < cutoff;
+            }
+            catch (JsonException)
+            {
+                return false;
             }
         }
     }

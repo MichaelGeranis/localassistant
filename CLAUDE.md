@@ -46,37 +46,52 @@ powershell -File scripts/Get-TelegramChatId.ps1
 `tests/LocalAssistant.Tests` covers the pure logic (command parsing, digest numbering and
 rendering, the draft allowlist, and the `settings.example.json` key contract); nothing in it
 touches Gmail, Telegram or Ollama. Target framework is `net11.0` (SDK pinned in `global.json`).
-The code has no Windows-only APIs and CI builds and tests it on Ubuntu and Windows, but the
-scheduled-task scripts are PowerShell + Task Scheduler, so day-to-day use is on Windows.
+The one Windows-only API is Credential Manager (`WindowsCredentialStore`, used only behind
+`OperatingSystem.IsWindows()`); CI builds and tests on Ubuntu and Windows, and its round-trip
+test runs on the Windows leg. The scheduled-task scripts are PowerShell + Task Scheduler, so
+day-to-day use is on Windows.
 
 ## Configuration
 
-Config splits by a **hard boundary**: **secrets** live in User-scoped environment variables;
+Config splits by a **hard boundary**: **secrets** live in Windows Credential Manager;
 **behaviour** lives in a JSON file. Nothing sensitive is ever in the JSON.
 
-### Secrets — environment variables
+### Secrets — Windows Credential Manager
 
-Read once at process start. The `[Environment]::SetEnvironmentVariable(...)` commands that
-set them are kept **outside the repo** (they hold live credentials); the README lists them.
-`.gitignore` blocks `global variables.md`, `.env` and `*.secret` files in case a copy lands in
-the tree.
+`SecretSource` (`src/LocalAssistant/Configuration/Secrets.cs`) reads each secret from Credential
+Manager first (generic credential `LocalAssistant/NAME`, via `WindowsCredentialStore`, a direct
+`CredReadW`/`CredWriteW` call: no package), and only then from an environment variable of the
+same name, for setups made before. Credential Manager entries are DPAPI-encrypted with the
+user's logon and read only on request; an environment variable is readable by every process
+of the user and copied into every child. Reading one from the environment logs a line telling
+you to migrate. Off Windows (CI on Ubuntu) there is no store, so only the environment is read.
+
+- `LocalAssistant secrets status` — where each secret is kept, never its value.
+- `LocalAssistant secrets set NAME` — stores one; the value is read hidden from the console (or a pipe).
+- `LocalAssistant secrets migrate` — copies every user environment variable above into
+  Credential Manager and removes the variable once the stored copy reads back identical. A
+  variable whose name already holds a different value in Credential Manager is left alone.
+
+The scheduled tasks use `-LogonType Interactive`, which is what lets them read Credential
+Manager. `.gitignore` blocks `global variables.md`, `.env` and `*.secret` files in case a copy
+of a secret lands in the tree.
 
 - `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` — OAuth installed-app
   credentials; the client exchanges the refresh token for access tokens itself. The refresh
   token must carry the `https://www.googleapis.com/auth/gmail.modify` scope (read **and**
   label — the dedup label feature needs write access). Re-mint it any time with
-  `powershell -File scripts/Get-GmailRefreshToken.ps1` (loopback consent flow, reuses the
-  client id/secret), then set the var and re-run the task registration.
+  `powershell -File scripts/Get-GmailRefreshToken.ps1 -ClientId … -ClientSecret …` (loopback
+  consent flow), then `secrets set GMAIL_REFRESH_TOKEN`.
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram bot (one message, tap-through links,
   no truncation). Token from `@BotFather`; chat id via
-  `powershell -File scripts/Get-TelegramChatId.ps1`.
-- `OLLAMA_*` — server-side tuning, not read by this app; they configure the Ollama server
-  process.
+  `powershell -File scripts/Get-TelegramChatId.ps1 -BotToken …`.
+- `OLLAMA_*` — environment variables, not secrets: server-side tuning, not read by this app;
+  they configure the Ollama server process.
 - `DIGEST_INCLUDE_QUIET` — **transitional.** `1`/`true`/`yes` still forces `includeQuiet` on;
   superseded by the JSON setting below and slated for removal.
 
-Missing Gmail vars throw and abort the run. Telegram is optional: if both Telegram vars are
-set the digest is sent there; if not, `Program.cs` just prints it to the console.
+Missing Gmail secrets throw and abort the run. Telegram is optional: if both Telegram secrets
+are set the digest is sent there; if not, `Program.cs` just prints it to the console.
 
 ### Behaviour — `settings.json`
 
@@ -112,6 +127,10 @@ keep in sync). When you add a setting: add the attribute, and add the row below 
 | `obsidian.vaultPath` | `""` | local folder holding the vault; the command replies "not configured" while blank |
 | `obsidian.inboxFile` | `Inbox.md` | file within the vault that notes are appended to (created if missing) |
 | `obsidian.digestFile` | `Vault Digest.md` | file within the vault that `Obsidian: digest` **overwrites**; also the one file the digest's own read skips |
+| `ollamaAllowRemote` | `false` | lets `ollamaUrl` point at another machine; otherwise a non-loopback URL is ignored (logged) and the default used, since full email bodies and notes go to the model |
+| `telegram.digestDetail` | `full` | `minimal` sends only the counts and the numbered links to Telegram - no sender, subject or summary on Telegram's servers. The console and the history keep the summaries |
+| `telegram.deleteAfterHours` | `0` | deletes digests, alerts, chat replies and the messages typed to the bot once this old (1-47; Telegram lets a bot delete for 48 hours). `TelegramMessageLog` keeps the ids in `telegram-messages.json`; the digest run cleans up before sending, `serve` every 10 minutes. With only the daily digest, use 23 or less |
+| `history.retentionDays` | `90` | days of digests kept in `digest-history.jsonl`, pruned on every run; `0` records none and deletes the file |
 
 `draftReplies.senders` entries match case-insensitively against the address parsed from an
 email's `From` header: `jane@firm.com` (exact) or `@firm.com` / `firm.com` (whole domain,
@@ -168,7 +187,8 @@ Pipeline, all orchestrated by `src/LocalAssistant/Program.cs`:
    without re-reading Gmail. Swallows all its own exceptions, `RunLog`-style, and logs a line
    either way — a bookkeeping write must never cost a delivered digest. Note this is the app's
    first copy of email content outside Gmail: summaries, subjects and senders in plaintext under
-   the user profile — never raw bodies. No retention policy yet (one line per daily run).
+   the user profile — never raw bodies. Lines older than `history.retentionDays` (90) are
+   removed on every run (`PruneOlderThan`); `0` turns the history off and deletes the file.
 6. On a successful delivery only, `LastEmailDigestStore.SaveAsync(digest)`
    (`src/LocalAssistant/Storage/LastEmailDigestStore.cs`) separately writes `EmailDigest.NumberedItems` to
    `%LocalAppData%\LocalAssistant\last-digest.json` (number → message id + subject) — a small,
@@ -285,7 +305,7 @@ exception (step 3a below):
   draft link — one bad message never loses the digest.
 - **Every path the app owns comes from `AppPaths`** (`src/LocalAssistant/AppPaths.cs`): one folder
   (`%LOCALAPPDATA%\LocalAssistant`) and one named field per file — settings, run log, digest
-  history, last-digest state, messenger offset. Writers call `AppPaths.EnsureRoot()` right
+  history, last-digest state, messenger offset, Telegram message ids. Writers call `AppPaths.EnsureRoot()` right
   before writing rather than assuming someone else created the folder. Nothing else should
   spell out `Environment.SpecialFolder.LocalApplicationData`.
 - **Digest numbering has exactly one source: `EmailDigest.NumberedItems`.** `Render` prints
@@ -299,8 +319,9 @@ exception (step 3a below):
   all its own exceptions by design. `Program.cs` logs a final `Run FAILED: ...` for any
   unhandled exception before rethrowing.
 - **Unhandled failures also ping Telegram.** `Program.cs`'s outer `catch` calls
-  `TryAlertFailure` — a best-effort `⚠️ Email digest run failed` message (exception type +
-  first 500 chars, machine, timestamp) so an unattended crash isn't silent. It builds its own
+  `TryAlertFailure` — a best-effort `⚠️ Email digest run failed` message (exception **type
+  only**, machine, timestamp: a message can quote a subject or a note, and the alert is stored
+  on Telegram's servers; the run log has the rest) so an unattended crash isn't silent. It builds its own
   `TelegramServiceClient`, and every error inside it is swallowed (returns quietly if Telegram
   isn't configured) so alerting never masks the real failure. The original exception is still
   rethrown, so Task Scheduler's retries fire — a bad run can produce up to 3 alerts. Only

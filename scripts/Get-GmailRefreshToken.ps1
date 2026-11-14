@@ -6,14 +6,14 @@
     'gmail.modify' (read + label) instead of 'gmail.readonly'.
 
 .DESCRIPTION
-    Reuses the GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET you already set as user
-    environment variables (see the README). Opens your browser for consent, catches the
-    redirect on a temporary localhost listener, exchanges the code, and writes the
-    refresh token to the console.
+    Pass -ClientId and -ClientSecret (from the Google Cloud console). Older setups that
+    still keep GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET in environment variables can omit
+    them. Opens your browser for consent, catches the redirect on a temporary localhost
+    listener, exchanges the code, and writes the refresh token to the console.
 
-    After running it:
-      [Environment]::SetEnvironmentVariable("GMAIL_REFRESH_TOKEN", "<printed value>", "User")
-    then open a NEW terminal and re-run scripts\Register-DailyDigestTask.ps1.
+    After running it, store the token in Windows Credential Manager (paste it at the
+    hidden prompt), then clear the console:
+      dotnet run --project src\LocalAssistant -- secrets set GMAIL_REFRESH_TOKEN
 
 .PARAMETER Scope
     Space-separated OAuth scopes. Defaults to gmail.modify (the current app requirement).
@@ -27,8 +27,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if ([string]::IsNullOrWhiteSpace($ClientId))     { throw "GMAIL_CLIENT_ID is not set and -ClientId was not supplied." }
-if ([string]::IsNullOrWhiteSpace($ClientSecret)) { throw "GMAIL_CLIENT_SECRET is not set and -ClientSecret was not supplied." }
+if ([string]::IsNullOrWhiteSpace($ClientId))     { throw "Pass -ClientId (or set GMAIL_CLIENT_ID)." }
+if ([string]::IsNullOrWhiteSpace($ClientSecret)) { throw "Pass -ClientSecret (or set GMAIL_CLIENT_SECRET)." }
 
 # Grab a free loopback port (Google's Desktop client type accepts any localhost port).
 $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
@@ -92,7 +92,5 @@ Write-Host ""
 Write-Host "New GMAIL_REFRESH_TOKEN:" -ForegroundColor Green
 Write-Host $tokenResponse.refresh_token
 Write-Host ""
-Write-Host "Set it (User scope) and refresh the scheduled task:" -ForegroundColor Cyan
-Write-Host "  [Environment]::SetEnvironmentVariable(`"GMAIL_REFRESH_TOKEN`", `"$($tokenResponse.refresh_token)`", `"User`")"
-Write-Host "  # open a NEW terminal, then:"
-Write-Host "  powershell -File scripts\Register-DailyDigestTask.ps1"
+Write-Host "Store it in Windows Credential Manager (paste it at the hidden prompt), then clear this console (cls):" -ForegroundColor Cyan
+Write-Host "  dotnet run --project src\LocalAssistant -- secrets set GMAIL_REFRESH_TOKEN"

@@ -107,14 +107,15 @@ dotnet build
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a
    project, enable the **Gmail API**, and create an **OAuth client ID** of type
    *Desktop app*. Add your account as a test user on the consent screen.
-2. Store the client ID and secret as user environment variables, then mint a
-   refresh token. The script opens your browser for consent and prints the token:
+2. Store the client ID and secret in Windows Credential Manager, then mint a
+   refresh token and store it too. Each `secrets set` asks for the value without
+   showing it; the script opens your browser for consent and prints the token:
 
    ```powershell
-   [Environment]::SetEnvironmentVariable("GMAIL_CLIENT_ID", "<client id>", "User")
-   [Environment]::SetEnvironmentVariable("GMAIL_CLIENT_SECRET", "<client secret>", "User")
-   powershell -File scripts/Get-GmailRefreshToken.ps1
-   [Environment]::SetEnvironmentVariable("GMAIL_REFRESH_TOKEN", "<printed token>", "User")
+   dotnet run --project src/LocalAssistant -- secrets set GMAIL_CLIENT_ID
+   dotnet run --project src/LocalAssistant -- secrets set GMAIL_CLIENT_SECRET
+   powershell -File scripts/Get-GmailRefreshToken.ps1 -ClientId <client id> -ClientSecret <client secret>
+   dotnet run --project src/LocalAssistant -- secrets set GMAIL_REFRESH_TOKEN
    ```
 
    The token carries the `gmail.modify` scope: read mail, add labels and create
@@ -127,16 +128,16 @@ dotnet build
 2. Send your new bot any message, then find your chat ID:
 
    ```powershell
-   [Environment]::SetEnvironmentVariable("TELEGRAM_BOT_TOKEN", "<token>", "User")
-   powershell -File scripts/Get-TelegramChatId.ps1
-   [Environment]::SetEnvironmentVariable("TELEGRAM_CHAT_ID", "<chat id>", "User")
+   dotnet run --project src/LocalAssistant -- secrets set TELEGRAM_BOT_TOKEN
+   powershell -File scripts/Get-TelegramChatId.ps1 -BotToken <token>
+   dotnet run --project src/LocalAssistant -- secrets set TELEGRAM_CHAT_ID
    ```
 
    The bot only ever answers this chat ID.
 
 ### 4. Run it
 
-Open a new terminal so it picks up the variables, then:
+Then:
 
 ```powershell
 dotnet run --project src/LocalAssistant            # one digest, now
@@ -153,14 +154,19 @@ powershell -File scripts/Register-ChatServiceTask.ps1   # at logon, restarts if 
 
 ## Configuration
 
-Secrets stay in the environment variables above. Everything else is in
+Secrets stay in Windows Credential Manager (`secrets status` shows where each
+one is kept). **Set up before this?** Run
+`dotnet run --project src/LocalAssistant -- secrets migrate` once: it moves your
+`GMAIL_*` and `TELEGRAM_*` environment variables into Credential Manager and
+removes them. Everything else is in
 `%LOCALAPPDATA%\LocalAssistant\settings.json`, which is created with defaults on
 the first run. [settings.example.json](settings.example.json) shows every key:
 
 | Key | Default | What it does |
 |---|---|---|
 | `model` | `llama3.2:3b` | Ollama model for summaries, triage, drafts and chat |
-| `ollamaUrl` | `http://127.0.0.1:11434` | Ollama server |
+| `ollamaUrl` | `http://127.0.0.1:11434` | Ollama server, on this machine |
+| `ollamaAllowRemote` | `false` | Allow an `ollamaUrl` on another machine (your mail goes there) |
 | `digestLabel` | `Digested` | Gmail label marking digested mail |
 | `includeQuiet` | `false` | List quiet mail instead of only counting it |
 | `draftReplies.enabled`, `.senders` | `false`, `[]` | Draft replies for these senders: `jane@firm.com` or a whole domain, `@firm.com` |
@@ -168,6 +174,9 @@ the first run. [settings.example.json](settings.example.json) shows every key:
 | `chat.systemPrompt`, `.historyTurns`, `.longPollSeconds` | | Chat persona, transcript length, Telegram long-poll timeout |
 | `obsidian.enabled`, `.vaultPath` | `false`, `""` | Turn on `Obsidian:` commands for a local vault folder |
 | `obsidian.inboxFile`, `.digestFile` | `Inbox.md`, `Vault Digest.md` | Where notes go, and which file the vault digest overwrites |
+| `telegram.digestDetail` | `full` | `minimal`: Telegram gets only counts and numbered links, no senders, subjects or summaries |
+| `telegram.deleteAfterHours` | `0` | Delete digests, replies and your messages to the bot after this many hours (1–47; 23 or less if you only run the daily digest) |
+| `history.retentionDays` | `90` | Days of digests kept in `digest-history.jsonl`; `0` keeps none |
 
 A missing or broken settings file never stops a run: the app logs a line and
 uses the defaults. A small model is fast and good enough for most mail. If
@@ -176,9 +185,17 @@ triage often misjudges ambiguous messages, try a 7–8B instruct model.
 ## Privacy and security
 
 - Your email content goes to Gmail, your local Ollama server, and Telegram (only
-  the digest you see). Nothing is sent to a hosted AI service.
+  the digest you see). Nothing is sent to a hosted AI service, and `ollamaUrl`
+  must be on this machine unless you set `ollamaAllowRemote`.
+- **Telegram stores your chats on its servers; bot chats are not end-to-end
+  encrypted.** Set `telegram.digestDetail` to `minimal` to keep senders, subjects
+  and summaries off Telegram, and `telegram.deleteAfterHours` to delete digests
+  and chat messages after a while.
+- Secrets are in Windows Credential Manager, encrypted with your Windows logon,
+  not in environment variables every program can read.
 - The digest history keeps summaries, subjects and senders in plain text under
-  your user profile. It never keeps raw email bodies.
+  your user profile, for `history.retentionDays` (90). It never keeps raw email
+  bodies. Failure alerts carry only the error's type.
 - The chatbot ignores every chat except `TELEGRAM_CHAT_ID`, without replying.
 - Report vulnerabilities privately: see [SECURITY.md](SECURITY.md).
 

@@ -6,12 +6,11 @@
 .DESCRIPTION
     One-time setup:
       1. In Telegram, open @BotFather -> /newbot -> follow the prompts -> copy the token.
-      2. [Environment]::SetEnvironmentVariable("TELEGRAM_BOT_TOKEN", "<token>", "User")
-         (or pass -BotToken to this script).
+      2. dotnet run --project src\LocalAssistant -- secrets set TELEGRAM_BOT_TOKEN
+         (paste the token at the hidden prompt; it goes to Windows Credential Manager).
       3. Open your new bot in Telegram and send it any message (e.g. "hi").
-      4. Run this script. It calls getUpdates and lists the chat id(s) it finds.
-      5. [Environment]::SetEnvironmentVariable("TELEGRAM_CHAT_ID", "<id>", "User")
-      6. Open a NEW terminal and re-run scripts\Register-DailyDigestTask.ps1.
+      4. Run this script with -BotToken <token>. It calls getUpdates and lists the chat id(s) it finds.
+      5. dotnet run --project src\LocalAssistant -- secrets set TELEGRAM_CHAT_ID
 
     For a private chat the id is your user id (a positive number). For a group it is a
     negative number - add the bot to the group and send a message there instead.
@@ -53,7 +52,5 @@ foreach ($chat in $chats) {
 }
 
 Write-Host ""
-Write-Host "Set the one you want (User scope) and refresh the scheduled task:" -ForegroundColor Cyan
-Write-Host "  [Environment]::SetEnvironmentVariable(`"TELEGRAM_CHAT_ID`", `"$($chats[0].id)`", `"User`")"
-Write-Host "  # open a NEW terminal, then:"
-Write-Host "  powershell -File scripts\Register-DailyDigestTask.ps1"
+Write-Host "Store the one you want in Windows Credential Manager (enter it at the prompt):" -ForegroundColor Cyan
+Write-Host "  dotnet run --project src\LocalAssistant -- secrets set TELEGRAM_CHAT_ID"
