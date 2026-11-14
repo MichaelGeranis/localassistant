@@ -36,12 +36,13 @@ namespace Google.Apis.Gmail.v1
             string? refreshToken = null,
             string digestLabel = "Digested")
         {
-            clientId ??= Environment.GetEnvironmentVariable("GMAIL_CLIENT_ID")
-                ?? throw new InvalidOperationException("GMAIL_CLIENT_ID environment variable is not set.");
-            clientSecret ??= Environment.GetEnvironmentVariable("GMAIL_CLIENT_SECRET")
-                ?? throw new InvalidOperationException("GMAIL_CLIENT_SECRET environment variable is not set.");
-            refreshToken ??= Environment.GetEnvironmentVariable("GMAIL_REFRESH_TOKEN")
-                ?? throw new InvalidOperationException("GMAIL_REFRESH_TOKEN environment variable is not set.");
+            var secrets = LocalAssistant.Configuration.SecretSource.Default;
+            clientId ??= secrets.Get("GMAIL_CLIENT_ID")
+                ?? throw new InvalidOperationException("GMAIL_CLIENT_ID is not set (Credential Manager or environment variable).");
+            clientSecret ??= secrets.Get("GMAIL_CLIENT_SECRET")
+                ?? throw new InvalidOperationException("GMAIL_CLIENT_SECRET is not set (Credential Manager or environment variable).");
+            refreshToken ??= secrets.Get("GMAIL_REFRESH_TOKEN")
+                ?? throw new InvalidOperationException("GMAIL_REFRESH_TOKEN is not set (Credential Manager or environment variable).");
 
             if (string.IsNullOrWhiteSpace(clientId))
             {

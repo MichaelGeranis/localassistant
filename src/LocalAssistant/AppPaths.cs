@@ -32,6 +32,9 @@ namespace LocalAssistant
         /// <summary>The messenger's <c>getUpdates</c> offset, so a restart doesn't replay seen messages.</summary>
         public static readonly string TelegramOffsetFile = Path.Combine(Root, "telegram-offset.txt");
 
+        /// <summary>Ids of the messages in the Telegram chat, for <c>telegram.deleteAfterHours</c>.</summary>
+        public static readonly string TelegramMessagesFile = Path.Combine(Root, "telegram-messages.json");
+
         /// <summary>
         /// Creates <see cref="Root"/> if it isn't there. Every writer calls this immediately
         /// before writing, rather than assuming an earlier component already did.

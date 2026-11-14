@@ -7,6 +7,12 @@ using LocalAssistant.Storage;
 using Ollama.Apis.v1;
 using Telegram.Apis.v1;
 
+if (args.Length > 0 && string.Equals(args[0], "secrets", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = SecretsCommand.Run(args[1..], SecretSource.Default, Console.Out);
+    return;
+}
+
 if (args.Length > 0 && string.Equals(args[0], "serve", StringComparison.OrdinalIgnoreCase))
 {
     RunLog.Append("Chat service run started.");
@@ -39,9 +45,9 @@ try
     Console.WriteLine(digest.FullText);
     RunLog.Append($"Digest built: {digest.EmailCount} unread email(s), Ollama available: {digest.LlmAvailable}.");
 
-    var (delivered, channel) = await SendTelegramDigestAsync(digest);
+    var (delivered, channel) = await SendTelegramDigestAsync(digest, settings.Telegram.DeleteAfterHours);
 
-    await EmailDigestStore.AppendAsync(digest, channel, delivered);
+    await EmailDigestStore.AppendAsync(digest, channel, delivered, settings.History.RetentionDays);
 
     if (delivered)
     {
@@ -74,11 +80,12 @@ static async Task TryAlertFailure(Exception ex)
             return; // Telegram not configured - nowhere to send an alert.
         }
 
-        var detail = ex.Message.Length > 500 ? ex.Message[..500] + "…" : ex.Message;
+        // The exception's type only: its message can quote what it was working on (a subject,
+        // a note), and the alert is stored on Telegram's servers. The run log has the details.
         var html =
             "<b>⚠️ Email digest run failed</b>\n"
             + $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm} on {HtmlEscape(Environment.MachineName)}\n\n"
-            + $"{HtmlEscape($"{ex.GetType().Name}: {detail}")}\n\n"
+            + $"{HtmlEscape(ex.GetType().Name)}\n\n"
             + "Full trace in digest-run-log.txt.";
 
         await client.SendHtml(html);
@@ -96,7 +103,7 @@ static async Task TryAlertFailure(Exception ex)
 }
 
 // Returns whether the digest reached its destination, and which destination that was
-static async Task<(bool Delivered, string Channel)> SendTelegramDigestAsync(EmailDigest digest)
+static async Task<(bool Delivered, string Channel)> SendTelegramDigestAsync(EmailDigest digest, int deleteAfterHours)
 {
     TelegramServiceClient? telegramClient = null;
     try
@@ -108,6 +115,13 @@ static async Task<(bool Delivered, string Channel)> SendTelegramDigestAsync(Emai
         Console.WriteLine($"Skipped Telegram (not configured): {ex.Message}");
         RunLog.Append($"Telegram skipped (not configured): {ex.Message}");
         return (true, EmailDigestStore.ConsoleChannel);
+    }
+
+    if (deleteAfterHours > 0)
+    {
+        // Earlier digests past their time go first; this one is remembered for a later run
+        await TelegramMessageLog.Default.DeleteExpiredAsync(telegramClient, deleteAfterHours, DateTimeOffset.Now);
+        telegramClient.MessageSent = id => TelegramMessageLog.Default.Record(id, DateTimeOffset.Now);
     }
 
     try

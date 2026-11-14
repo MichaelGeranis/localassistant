@@ -150,7 +150,7 @@ namespace LocalAssistant.VaultDigest
             catch (Exception ex)
             {
                 // Per-note tolerance, as in the email digest: one failed call costs one summary.
-                RunLog.Append($"Vault note summary failed for \"{note.RelativePath}\": {ex.Message}");
+                RunLog.Append($"Vault note summary failed: {ex.GetType().Name}");
                 return $"(summary failed: {ex.Message})";
             }
         }

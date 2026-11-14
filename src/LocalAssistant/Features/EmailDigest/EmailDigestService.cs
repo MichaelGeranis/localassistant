@@ -48,6 +48,13 @@ namespace LocalAssistant.Digest
 
         public bool ExpandQuietEmails { get; init; }
 
+        /// <summary>
+        /// Leaves senders, subjects and summaries out of <see cref="TelegramHtml"/> (setting
+        /// <c>telegram.digestDetail</c> = <c>minimal</c>): only the counts and the numbered links to
+        /// each email reach Telegram's servers. The numbers are the same, so "mark 3 as read" works.
+        /// </summary>
+        public bool MinimalTelegram { get; init; }
+
         public IReadOnlyList<string> EmailIds => Items.Select(item => item.Id).ToList();
 
         private IReadOnlyList<(int Number, DigestItem Item)>? _numberedItems;
@@ -92,16 +99,21 @@ namespace LocalAssistant.Digest
 
         private string Render(bool html)
         {
+            var minimal = html && MinimalTelegram;
             string Bold(string s) => html ? $"<b>{s}</b>" : s;
             string Line(int number, DigestItem item)
             {
                 var label = html && !string.IsNullOrEmpty(item.Id)
                     ? $"<a href=\"{GmailInboxAllUrl}{item.Id}\">{number}.</a>"
                     : $"{number}.";
-                var summary = html ? HtmlEscape(item.Summary) : item.Summary;
                 var draft = item.DraftUrl is { Length: > 0 } url
                     ? (html ? $"  <a href=\"{url}\">✍️ draft ready</a>" : $"  [draft ready: {url}]")
                     : string.Empty;
+                if (minimal)
+                {
+                    return $"{label}{draft}";
+                }
+                var summary = html ? HtmlEscape(item.Summary) : item.Summary;
                 return $"{label} {summary}{draft}";
             }
             string AllUnread() => html
@@ -120,9 +132,16 @@ namespace LocalAssistant.Digest
                 text.AppendLine($"{EmailCount} unread email(s)");
                 text.AppendLine("[Ollama was unreachable - subjects only, no AI summaries]");
                 text.AppendLine();
-                foreach (var (number, item) in numbered)
+                if (minimal)
                 {
-                    text.AppendLine(Line(number, item));
+                    text.AppendLine(string.Join("   ", numbered.Select(pair => Line(pair.Number, pair.Item))));
+                }
+                else
+                {
+                    foreach (var (number, item) in numbered)
+                    {
+                        text.AppendLine(Line(number, item));
+                    }
                 }
                 if (EmailCount > 0)
                 {
@@ -168,9 +187,17 @@ namespace LocalAssistant.Digest
                     return;
                 }
                 text.AppendLine(Bold(header));
-                foreach (var (number, item) in group)
+                if (minimal)
                 {
-                    text.AppendLine(Line(number, item));
+                    // One line of numbered links per group: tap a number to open that email
+                    text.AppendLine(string.Join("   ", group.Select(pair => Line(pair.Number, pair.Item))));
+                }
+                else
+                {
+                    foreach (var (number, item) in group)
+                    {
+                        text.AppendLine(Line(number, item));
+                    }
                 }
                 text.AppendLine();
             }
@@ -261,7 +288,8 @@ namespace LocalAssistant.Digest
                 GeneratedAt = DateTimeOffset.Now,
                 LlmAvailable = ollamaAvailable,
                 Items = items,
-                ExpandQuietEmails = settings.ExpandQuietEmailsInDigest
+                ExpandQuietEmails = settings.ExpandQuietEmailsInDigest,
+                MinimalTelegram = settings.Telegram.IsMinimal
             };
         }
 
@@ -343,7 +371,7 @@ namespace LocalAssistant.Digest
             }
             catch (Exception ex)
             {
-                RunLog.Append($"Draft reply failed for \"{subject}\": {ex.Message}");
+                RunLog.Append($"Draft reply failed for message {email.Id}: {ex.GetType().Name}");
                 return null;
             }
         }

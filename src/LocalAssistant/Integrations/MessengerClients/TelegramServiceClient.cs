@@ -26,12 +26,19 @@ namespace Telegram.Apis.v1
         /// </summary>
         public string ChatId => _chatId;
 
+        /// <summary>
+        /// Called with the id of every message this client sends, so they can be deleted later
+        /// (see <c>TelegramMessageLog</c>). Null when nothing is deleted.
+        /// </summary>
+        public Action<long>? MessageSent { get; set; }
+
         public TelegramServiceClient(string? botToken = null, string? chatId = null)
         {
-            botToken ??= Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
-                ?? throw new InvalidOperationException("TELEGRAM_BOT_TOKEN environment variable is not set.");
-            chatId ??= Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID")
-                ?? throw new InvalidOperationException("TELEGRAM_CHAT_ID environment variable is not set.");
+            var secrets = LocalAssistant.Configuration.SecretSource.Default;
+            botToken ??= secrets.Get("TELEGRAM_BOT_TOKEN")
+                ?? throw new InvalidOperationException("TELEGRAM_BOT_TOKEN is not set (Credential Manager or environment variable).");
+            chatId ??= secrets.Get("TELEGRAM_CHAT_ID")
+                ?? throw new InvalidOperationException("TELEGRAM_CHAT_ID is not set (Credential Manager or environment variable).");
 
             botToken = botToken.Trim();
             chatId = chatId.Trim();
@@ -151,10 +158,10 @@ namespace Telegram.Apis.v1
             using var response = await _httpClient.PostAsync($"{ApiBaseUrl}{_botToken}/sendMessage", content);
             var body = await response.Content.ReadAsStringAsync();
 
-            TelegramApiResponse? result = null;
+            TelegramSendResponse? result = null;
             try
             {
-                result = JsonSerializer.Deserialize(body, TelegramJsonContext.Default.TelegramApiResponse);
+                result = JsonSerializer.Deserialize(body, TelegramJsonContext.Default.TelegramSendResponse);
             }
             catch (JsonException)
             {
@@ -166,6 +173,29 @@ namespace Telegram.Apis.v1
                 throw new InvalidOperationException(
                     $"Telegram API error (HTTP {(int)response.StatusCode}): {result?.Description ?? body}");
             }
+
+            if (result.Result is { MessageId: > 0 } sent)
+            {
+                MessageSent?.Invoke(sent.MessageId);
+            }
+        }
+
+        /// <summary>
+        /// Deletes a message in the authorized chat. Telegram lets a bot delete its own messages,
+        /// and the messages it received in a private chat, for 48 hours after they were sent.
+        /// </summary>
+        /// <returns>False when Telegram refused (too old, or already gone)</returns>
+        public async Task<bool> TryDeleteMessageAsync(long messageId)
+        {
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["chat_id"] = _chatId,
+                ["message_id"] = messageId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            });
+            using var response = await _httpClient.PostAsync($"{ApiBaseUrl}{_botToken}/deleteMessage", content);
+            var body = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize(body, TelegramJsonContext.Default.TelegramApiResponse);
+            return result?.Ok == true;
         }
 
         /// <summary>
@@ -260,6 +290,24 @@ namespace Telegram.Apis.v1
         public string? Description { get; set; }
     }
 
+    public class TelegramSendResponse
+    {
+        [JsonPropertyName("ok")]
+        public bool Ok { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        [JsonPropertyName("result")]
+        public TelegramSentMessage? Result { get; set; }
+    }
+
+    public class TelegramSentMessage
+    {
+        [JsonPropertyName("message_id")]
+        public long MessageId { get; set; }
+    }
+
     public class TelegramGetUpdatesResponse
     {
         [JsonPropertyName("ok")]
@@ -316,6 +364,8 @@ namespace Telegram.Apis.v1
 
     [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonSerializable(typeof(TelegramApiResponse))]
+    [JsonSerializable(typeof(TelegramSendResponse))]
+    [JsonSerializable(typeof(TelegramSentMessage))]
     [JsonSerializable(typeof(TelegramGetUpdatesResponse))]
     [JsonSerializable(typeof(TelegramUpdate))]
     [JsonSerializable(typeof(TelegramIncomingMessage))]

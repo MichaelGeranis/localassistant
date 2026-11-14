@@ -61,6 +61,15 @@ namespace LocalAssistant.Chat
             var offset = await LoadOffsetAsync(telegram);
             var history = new List<ChatTurn>();
 
+            // With telegram.deleteAfterHours, replies and the messages typed to the bot are
+            // remembered and deleted once they are that old, checked every few minutes
+            var deleteAfterHours = settings.Telegram.DeleteAfterHours;
+            var nextCleanup = DateTimeOffset.MinValue;
+            if (deleteAfterHours > 0)
+            {
+                telegram.MessageSent = id => TelegramMessageLog.Default.Record(id, DateTimeOffset.Now);
+            }
+
             Console.WriteLine($"Chat service running. Long-polling ({settings.Chat.LongPollSeconds}s timeout). Authorized chat: {telegram.ChatId}.");
             RunLog.Append($"Chat service running (long-poll timeout {settings.Chat.LongPollSeconds}s, model {settings.LLM}).");
 
@@ -68,6 +77,12 @@ namespace LocalAssistant.Chat
             {
                 try
                 {
+                    if (deleteAfterHours > 0 && DateTimeOffset.Now >= nextCleanup)
+                    {
+                        nextCleanup = DateTimeOffset.Now.AddMinutes(10);
+                        await TelegramMessageLog.Default.DeleteExpiredAsync(telegram, deleteAfterHours, DateTimeOffset.Now);
+                    }
+
                     var updates = await telegram.GetUpdatesAsync(offset, timeoutSeconds: settings.Chat.LongPollSeconds);
                     foreach (var update in updates)
                     {
@@ -104,6 +119,12 @@ namespace LocalAssistant.Chat
                 // happened. This is the one security-critical line.
                 RunLog.Append($"Ignored message from unauthorized chat id {chatId}.");
                 return;
+            }
+
+            if (settings.Telegram.DeleteAfterHours > 0)
+            {
+                // What was typed to the bot is chat content too; a bot may delete it in a private chat
+                TelegramMessageLog.Default.Record(message.MessageId, DateTimeOffset.FromUnixTimeSeconds(message.Date));
             }
 
             var text = message.Text.Trim();

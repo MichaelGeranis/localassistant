@@ -29,6 +29,10 @@ Of particular interest:
   any action;
 - text in an email or note making the app mark, label or draft mail it should
   not, or write outside the configured Obsidian vault;
-- credentials or email content reaching logs, the digest history, or anywhere
-  other than Gmail, Telegram and the local Ollama server;
+- credentials or email content reaching logs, failure alerts, or anywhere
+  other than Gmail, Telegram, the local Ollama server and the digest history;
+- reading the Gmail or Telegram credentials stored in Windows Credential Manager
+  as another user;
+- email content reaching Telegram when `telegram.digestDetail` is `minimal`, or
+  surviving there past `telegram.deleteAfterHours`;
 - HTML injection into the Telegram digest.

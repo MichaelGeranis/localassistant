@@ -30,6 +30,13 @@ namespace LocalAssistant.Configuration
         [JsonPropertyName("ollamaUrl")]
         public string OllamaUrl { get; set; } = DefaultOllamaUrl;
 
+        /// <summary>
+        /// Lets <see cref="OllamaUrl"/> point at another machine. Off by default: full email
+        /// bodies and notes go to the model, so a typo must not send them across the network.
+        /// </summary>
+        [JsonPropertyName("ollamaAllowRemote")]
+        public bool OllamaAllowRemote { get; set; }
+
         [JsonPropertyName("includeQuiet")]
         public bool ExpandQuietEmailsInDigest { get; set; }
 
@@ -41,6 +48,12 @@ namespace LocalAssistant.Configuration
 
         [JsonPropertyName("obsidian")]
         public ObsidianSettings Obsidian { get; set; } = new();
+
+        [JsonPropertyName("telegram")]
+        public TelegramSettings Telegram { get; set; } = new();
+
+        [JsonPropertyName("history")]
+        public HistorySettings History { get; set; } = new();
 
         public static string AppSettingsFilePath => AppPaths.SettingsFile;
 
@@ -81,13 +94,30 @@ namespace LocalAssistant.Configuration
             if (string.IsNullOrWhiteSpace(LLM)) LLM = DefaultModel;
             if (string.IsNullOrWhiteSpace(EmailDigestLabel)) EmailDigestLabel = DefaultDigestLabel;
             if (string.IsNullOrWhiteSpace(OllamaUrl)) OllamaUrl = DefaultOllamaUrl;
+            if (!OllamaAllowRemote && !IsLocalUrl(OllamaUrl))
+            {
+                RunLog.Append(
+                    $"settings.json: ollamaUrl is not on this machine, so it was ignored and {DefaultOllamaUrl} is used. "
+                    + "Set ollamaAllowRemote to true to send email and notes to another machine's model.");
+                OllamaUrl = DefaultOllamaUrl;
+            }
             DraftReplies ??= new DraftReplySettings();
             DraftReplies.Senders ??= new List<string>();
             Chat ??= new ChatSettings();
             Chat.Normalize();
             Obsidian ??= new ObsidianSettings();
             Obsidian.Normalize();
+            Telegram ??= new TelegramSettings();
+            Telegram.Normalize();
+            History ??= new HistorySettings();
+            History.Normalize();
         }
+
+        /// <summary>True for an http(s) URL whose host is this machine: localhost or a loopback address.</summary>
+        internal static bool IsLocalUrl(string url) =>
+            Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            && uri.IsLoopback;
 
         private Settings WithEnvOverrides()
         {
@@ -268,5 +298,60 @@ namespace LocalAssistant.Configuration
     [JsonSerializable(typeof(Settings))]
     internal partial class SettingsJsonContext : JsonSerializerContext
     {
+    }
+
+    public sealed class TelegramSettings
+    {
+        public const string FullDetail = "full";
+        public const string MinimalDetail = "minimal";
+
+        /// <summary>
+        /// <c>full</c>: each email's summary, as before. <c>minimal</c>: only the counts and the
+        /// numbered links, so no sender, subject or summary is stored on Telegram's servers.
+        /// </summary>
+        [JsonPropertyName("digestDetail")]
+        public string DigestDetail { get; set; } = FullDetail;
+
+        /// <summary>
+        /// Deletes digests, alerts, chat replies and messages sent to the bot once they are this
+        /// many hours old (1-47; Telegram allows 48). 0 keeps them.
+        /// </summary>
+        [JsonPropertyName("deleteAfterHours")]
+        public int DeleteAfterHours { get; set; }
+
+        [JsonIgnore]
+        public bool IsMinimal => string.Equals(DigestDetail, MinimalDetail, StringComparison.OrdinalIgnoreCase);
+
+        internal void Normalize()
+        {
+            if (!string.Equals(DigestDetail, FullDetail, StringComparison.OrdinalIgnoreCase) && !IsMinimal)
+            {
+                RunLog.Append($"settings.json: telegram.digestDetail '{DigestDetail}' is not 'full' or 'minimal'; using 'full'.");
+                DigestDetail = FullDetail;
+            }
+            if (DeleteAfterHours < 0) DeleteAfterHours = 0;
+            if (DeleteAfterHours > Storage.TelegramMessageLog.MaxDeleteAfterHours)
+            {
+                RunLog.Append($"settings.json: telegram.deleteAfterHours is above {Storage.TelegramMessageLog.MaxDeleteAfterHours}, Telegram's limit; using {Storage.TelegramMessageLog.MaxDeleteAfterHours}.");
+                DeleteAfterHours = Storage.TelegramMessageLog.MaxDeleteAfterHours;
+            }
+        }
+    }
+
+    public sealed class HistorySettings
+    {
+        public const int DefaultRetentionDays = 90;
+
+        /// <summary>
+        /// How many days of digests digest-history.jsonl keeps (subjects and summaries); older
+        /// lines are removed on each run. 0 records no history at all.
+        /// </summary>
+        [JsonPropertyName("retentionDays")]
+        public int RetentionDays { get; set; } = DefaultRetentionDays;
+
+        internal void Normalize()
+        {
+            if (RetentionDays < 0) RetentionDays = DefaultRetentionDays;
+        }
     }
 }
