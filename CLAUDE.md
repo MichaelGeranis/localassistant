@@ -327,9 +327,8 @@ exception (step 3a below):
   rethrown, so Task Scheduler's retries fire — a bad run can produce up to 3 alerts. Only
   unhandled exceptions alert; the degraded paths above (Ollama down, Telegram send failed,
   labeling failed) are already visible in the digest or the run log.
-- **Hand-rolled API clients in vendor-style namespaces.** `Google.Apis.Gmail.v1`,
-  `Ollama.Apis.v1`, and `Telegram.Apis.v1` are *not* NuGet packages — they are this repo's
-  own classes (`src/LocalAssistant/Integrations/**/*ServiceClient.cs`). `LocalAssistant.csproj` has zero
+- **Hand-rolled API clients.** `LocalAssistant.Integrations.Gmail`, `.Ollama` and `.Telegram`
+  are this repo's own classes, not vendor SDKs (`src/LocalAssistant/Integrations/**/*ServiceClient.cs`). `LocalAssistant.csproj` has zero
   `PackageReference`s. Everything is raw `HttpClient`.
 - **JSON uses source-generated contexts** (`GMailJsonContext`, `OllamaJsonContext`,
   `TelegramJsonContext`, `SettingsJsonContext`, `EmailDigestStoreJsonContext`, `LastEmailDigestJsonContext`)

@@ -28,6 +28,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The Gmail, Ollama and Telegram clients moved to the
+  `LocalAssistant.Integrations.*` namespaces, so they can't be mistaken for the
+  vendors' own SDKs.
+
 - `ollamaUrl` must be on this machine unless `ollamaAllowRemote` is set; any
   other URL is ignored, logged, and the default used.
 - Failure alerts to Telegram carry only the exception's type, and the run log
@@ -41,6 +45,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Register-*Task.ps1` scripts once so the tasks point at the new executable.
 - The scripts folder is now `scripts/`.
 - Warnings are treated as errors.
+
+### Fixed
+
+- `/read` and `Gmail:` no longer act on part of a range they can't read:
+  `1-500` used to mark items 1 and 500, and `0-3` items 3. A range like that
+  now makes the whole command unrecognised. A reversed range (`5-3`) marks 3 to
+  5, and a number too large to read no longer crashes the command.
 
 ### Before this changelog
 

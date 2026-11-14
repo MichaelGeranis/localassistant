@@ -1,5 +1,5 @@
 using LocalAssistant.Configuration;
-using Ollama.Apis.v1;
+using LocalAssistant.Integrations.Ollama;
 
 namespace LocalAssistant.Chat
 {

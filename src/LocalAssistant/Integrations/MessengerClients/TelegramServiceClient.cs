@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Telegram.Apis.v1
+namespace LocalAssistant.Integrations.Telegram
 {
     /// <summary>
     /// Hand-rolled Telegram Bot API client (not a NuGet package). 
