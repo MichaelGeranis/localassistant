@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using LocalAssistant.Configuration;
 
-namespace Ollama.Apis.v1
+namespace LocalAssistant.Integrations.Ollama
 {
     /// <summary>
     /// A client for interacting with the Ollama API locally. 

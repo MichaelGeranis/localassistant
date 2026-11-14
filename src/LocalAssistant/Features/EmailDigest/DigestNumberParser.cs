@@ -43,6 +43,9 @@ namespace LocalAssistant.Digest
         };
 
         // "3-5" or "3 to 5" / "3 through 5" -> expanded to "3 4 5" before tokenizing.
+        /// <summary>The longest range accepted; far more items than any one digest holds.</summary>
+        internal const int MaxRangeLength = 100;
+
         private static readonly Regex RangeExpander = new(@"(?<a>\d+)\s*(?:-|to|through)\s*(?<b>\d+)", RegexOptions.IgnoreCase);
 
         // A digit run (optionally with an ordinal suffix) or a bare word - the word alternative is
@@ -51,24 +54,38 @@ namespace LocalAssistant.Digest
 
         /// <summary>
         /// Extracts the distinct digest numbers (1-based, ascending) named in
-        /// <paramref name="text"/>. False if there are none - e.g. "archive everything", which
-        /// the caller should report back as an unrecognized command rather than silently doing
-        /// nothing.
+        /// <paramref name="text"/>. False if there are none - e.g. "archive everything" - or if a
+        /// range can't be a run of digest items ("0-3", "1-500"); the caller should report either
+        /// back as an unrecognized command rather than silently doing nothing, or doing part of it.
         /// </summary>
         public static bool TryParseNumbers(string text, out IReadOnlyList<int> numbers)
         {
             numbers = Array.Empty<int>();
 
+            // A range that can't be a run of digest items rejects the whole phrase. Leaving it in
+            // place would let the token scan below pick up its two ends, so "1-500" would mark
+            // items 1 and 500 - a mutation the user never asked for.
+            var validRanges = true;
             text = RangeExpander.Replace(text, match =>
             {
-                var a = int.Parse(match.Groups["a"].Value);
-                var b = int.Parse(match.Groups["b"].Value);
-                if (a < 1 || a > b || b - a > 100)
+                if (!int.TryParse(match.Groups["a"].Value, out var a) || !int.TryParse(match.Groups["b"].Value, out var b))
                 {
-                    return match.Value; // nonsense range - leave it, the token scan below just won't use it
+                    validRanges = false;
+                    return match.Value;
                 }
-                return string.Join(' ', Enumerable.Range(a, b - a + 1));
+                var (from, to) = a <= b ? (a, b) : (b, a); // "5-3" means 3, 4 and 5
+                if (from < 1 || to - from > MaxRangeLength)
+                {
+                    validRanges = false;
+                    return match.Value;
+                }
+                return string.Join(' ', Enumerable.Range(from, to - from + 1));
             });
+
+            if (!validRanges)
+            {
+                return false;
+            }
 
             var found = new SortedSet<int>();
             foreach (Match match in Token.Matches(text))

@@ -2,7 +2,7 @@ using System.Text;
 using LocalAssistant.Configuration;
 using LocalAssistant.Diagnostics;
 using LocalAssistant.Storage;
-using Ollama.Apis.v1;
+using LocalAssistant.Integrations.Ollama;
 
 namespace LocalAssistant.VaultDigest
 {

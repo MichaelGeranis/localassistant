@@ -1,11 +1,11 @@
-using Google.Apis.Gmail.v1;
+using LocalAssistant.Integrations.Gmail;
 using LocalAssistant.Chat;
 using LocalAssistant.Configuration;
 using LocalAssistant.Diagnostics;
 using LocalAssistant.Digest;
 using LocalAssistant.Storage;
-using Ollama.Apis.v1;
-using Telegram.Apis.v1;
+using LocalAssistant.Integrations.Ollama;
+using LocalAssistant.Integrations.Telegram;
 
 if (args.Length > 0 && string.Equals(args[0], "secrets", StringComparison.OrdinalIgnoreCase))
 {

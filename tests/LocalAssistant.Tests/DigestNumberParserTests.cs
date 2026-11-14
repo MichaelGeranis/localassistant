@@ -13,6 +13,7 @@ public class DigestNumberParserTests
     [InlineData("2 to 4", new[] { 2, 3, 4 })]
     [InlineData("1 through 3 and 7", new[] { 1, 2, 3, 7 })]
     [InlineData("Seventh", new[] { 7 })]
+    [InlineData("5-3", new[] { 3, 4, 5 })]
     public void TryParseNumbers_WhenNumbersAreNamed_ShouldReturnThemDistinctAndAscending(string text, int[] expected)
     {
         Assert.True(DigestNumberParser.TryParseNumbers(text, out var numbers));
@@ -27,5 +28,24 @@ public class DigestNumberParserTests
     {
         Assert.False(DigestNumberParser.TryParseNumbers(text, out var numbers));
         Assert.Empty(numbers);
+    }
+
+    [Theory]
+    [InlineData("1-500")]
+    [InlineData("0-3")]
+    [InlineData("2 and 1-500")]
+    [InlineData("99999999999-1")]
+    public void TryParseNumbers_WhenARangeIsNotARunOfDigestItems_ShouldRejectTheWholePhrase(string text)
+    {
+        // Marking the range's two ends, or the valid numbers beside it, would change mail the user didn't name
+        Assert.False(DigestNumberParser.TryParseNumbers(text, out var numbers));
+        Assert.Empty(numbers);
+    }
+
+    [Fact]
+    public void TryParseNumbers_WhenRangeIsAtTheLimit_ShouldExpandIt()
+    {
+        Assert.True(DigestNumberParser.TryParseNumbers($"1-{1 + DigestNumberParser.MaxRangeLength}", out var numbers));
+        Assert.Equal(DigestNumberParser.MaxRangeLength + 1, numbers.Count);
     }
 }

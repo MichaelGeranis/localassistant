@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LocalAssistant.Diagnostics;
-using Telegram.Apis.v1;
+using LocalAssistant.Integrations.Telegram;
 
 namespace LocalAssistant.Storage
 {

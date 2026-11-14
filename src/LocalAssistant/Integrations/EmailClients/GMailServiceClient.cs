@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using LocalAssistant.Configuration;
 
-namespace Google.Apis.Gmail.v1
+namespace LocalAssistant.Integrations.Gmail
 {
     /// <summary>
     /// Hand-rolled Gmail REST client.

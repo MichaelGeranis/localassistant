@@ -1,10 +1,10 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Google.Apis.Gmail.v1;
+using LocalAssistant.Integrations.Gmail;
 using LocalAssistant.Configuration;
 using LocalAssistant.Diagnostics;
-using Ollama.Apis.v1;
+using LocalAssistant.Integrations.Ollama;
 
 namespace LocalAssistant.Digest
 {
